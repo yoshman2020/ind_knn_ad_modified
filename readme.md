@@ -1,3 +1,15 @@
+## This software is based on rvorias:
+https://github.com/h1day/ind_knn_ad/blob/master/LICENSE
+
+## Modified portions of this software are below.
+
+* REPORT_CONTEXT_ATTR_NAME to SCRIPT_RUN_CONTEXT_ATTR_NAME
+* transrate to Japanese
+* add score chart
+* change default check
+* change Test sample index to button
+* hide Menu
+
 # Industrial KNN-based Anomaly Detection
 
 ⭐Now has streamlit support!⭐ Run `$ streamlit run streamlit_app.py`
