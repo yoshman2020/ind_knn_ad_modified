@@ -11,8 +11,10 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 DATASETS_PATH = Path("./datasets")
+DATASETS_PATH_P = Path("../datasets")
 IMAGENET_MEAN = tensor([.485, .456, .406])
 IMAGENET_STD = tensor([.229, .224, .225])
+
 
 def mvtec_classes():
     return [
@@ -33,6 +35,7 @@ def mvtec_classes():
         "zipper",
     ]
 
+
 class MVTecDataset:
     def __init__(self, cls : str, size : int = 224):
         self.cls = cls
@@ -44,7 +47,8 @@ class MVTecDataset:
 
     def _download(self):
         if not isdir(DATASETS_PATH / self.cls):
-            print(f"   Could not find '{self.cls}' in '{DATASETS_PATH}/'. Downloading ... ")
+            print(
+                f"   Could not find '{self.cls}' in '{DATASETS_PATH}/'. Downloading ... ")
             url = f"ftp://guest:GU.205dldo@ftp.softronics.ch/mvtec_anomaly_detection/{self.cls}.tar.xz"
             wget.download(url)
             with tarfile.open(f"{self.cls}.tar.xz") as tar:
@@ -60,12 +64,17 @@ class MVTecDataset:
     def get_dataloaders(self):
         return DataLoader(self.train_ds), DataLoader(self.test_ds)
 
+
 class MVTecTrainDataset(ImageFolder):
     def __init__(self, cls : str, size : int):
+        global DATASETS_PATH, DATASETS_PATH_P
+        if not isdir(DATASETS_PATH):
+            DATASETS_PATH = DATASETS_PATH_P
         super().__init__(
             root=DATASETS_PATH / cls / "train",
             transform=transforms.Compose([
-                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.Resize(
+                    256, interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
@@ -74,12 +83,14 @@ class MVTecTrainDataset(ImageFolder):
         self.cls = cls
         self.size = size
 
+
 class MVTecTestDataset(ImageFolder):
     def __init__(self, cls : str, size : int):
         super().__init__(
             root=DATASETS_PATH / cls / "test",
             transform=transforms.Compose([
-                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.Resize(
+                    256, interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
@@ -114,12 +125,15 @@ class MVTecTestDataset(ImageFolder):
 
         return sample, target[:1], sample_class
 
+
 class StreamingDataset:
     """This dataset is made specifically for the streamlit app."""
+
     def __init__(self, size: int = 224):
         self.size = size
         self.transform=transforms.Compose([
-                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.Resize(
+                256, interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),

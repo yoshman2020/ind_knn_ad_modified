@@ -5,10 +5,11 @@ https://github.com/h1day/ind_knn_ad/blob/master/LICENSE
 
 * REPORT_CONTEXT_ATTR_NAME to SCRIPT_RUN_CONTEXT_ATTR_NAME
 * transrate to Japanese
-* add score chart
+* add score histogram
 * change default check
 * change Test sample index to button
 * hide Menu
+* add threshold
 
 # Industrial KNN-based Anomaly Detection
 

@@ -66,6 +66,8 @@ class KNNExtractor(torch.nn.Module):
             z_score, fmap = self.predict(sample)
 
             image_preds.append(z_score.numpy())
+            if isinstance(label, torch.Tensor):
+                label = label.item()
             image_labels.append(label)
 
             pixel_preds.extend(fmap.flatten().numpy())

@@ -1,3 +1,4 @@
+import os
 import sys
 import yaml
 from tqdm import tqdm
@@ -15,8 +16,10 @@ TQDM_PARAMS = {
 	"bar_format" : "   {l_bar}{bar:10}{r_bar}{bar:-10b}",
 }
 
+
 def get_tqdm_params():
     return TQDM_PARAMS
+
 
 class GaussianBlur:
     def __init__(self, radius : int = 4):
@@ -82,9 +85,11 @@ def get_coreset_idx_randomp(
         min_distances = min_distances.to("cuda")
 
     for _ in tqdm(range(n-1), **TQDM_PARAMS):
-        distances = torch.linalg.norm(z_lib-last_item, dim=1, keepdims=True) # broadcasting step
+        distances = torch.linalg.norm(
+            z_lib-last_item, dim=1, keepdims=True)  # broadcasting step
         # distances = torch.sum(torch.pow(z_lib-last_item, 2), dim=1, keepdims=True) # broadcasting step
-        min_distances = torch.minimum(distances, min_distances) # iterative step
+        min_distances = torch.minimum(
+            distances, min_distances)  # iterative step
         select_idx = torch.argmax(min_distances) # selection step
 
         # bookkeeping
@@ -94,22 +99,29 @@ def get_coreset_idx_randomp(
 
     return torch.stack(coreset_idx)
 
+
 def print_and_export_results(results : dict, method : str):
     """Writes results to .yaml and serialized results to .txt."""
     
     print("\n   ╭────────────────────────────╮")
     print(  "   │      Results summary       │")
     print(  "   ┢━━━━━━━━━━━━━━━━━━━━━━━━━━━━┪")
-    print( f"   ┃ average image rocauc: {results['average image rocauc']:.2f} ┃")
-    print( f"   ┃ average pixel rocauc: {results['average pixel rocauc']:.2f} ┃")
+    print(
+        f"   ┃ average image rocauc: {results['average image rocauc']:.2f} ┃")
+    print(
+        f"   ┃ average pixel rocauc: {results['average pixel rocauc']:.2f} ┃")
     print(  "   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n")
 
     # write
     timestamp = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
     name = f"{method}_{timestamp}"
 
-    results_yaml_path = f"./results/{name}.yml"
-    scoreboard_path = f"./results/{name}.txt"
+    result_dir = './results'
+    if not os.path.exists(result_dir):
+        result_dir = '../results'
+
+    results_yaml_path = f"{result_dir}/{name}.yml"
+    scoreboard_path = f"{result_dir}/{name}.txt"
 
     with open(results_yaml_path, "w") as outfile:
         yaml.safe_dump(results, outfile, default_flow_style=False)
@@ -117,6 +129,7 @@ def print_and_export_results(results : dict, method : str):
         outfile.write(serialize_results(results["per_class_results"]))
         
     print(f"   Results written to {results_yaml_path}")
+
 
 def serialize_results(results : dict) -> str:
     """Serialize a results dict into something usable in markdown."""

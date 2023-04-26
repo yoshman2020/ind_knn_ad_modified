@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from io import StringIO
 from streamlit.runtime.scriptrunner.script_run_context import SCRIPT_RUN_CONTEXT_ATTR_NAME
 from threading import current_thread
+from scipy import stats
 import streamlit as st
 import sys
 from time import sleep
@@ -12,8 +13,10 @@ from time import sleep
 from PIL import Image
 import io
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 sys.path.append('./indad')
 
@@ -81,31 +84,6 @@ def get_sample_images(dataset, n):
     return ans
 
 
-def show_range(min, max, mean, x_min, x_max):
-    x = (min, max)
-    y = (1, 1)
-
-    fig, ax = plt.subplots(figsize=(10, 0.4))
-    plt.gca().spines['right'].set_visible(False)
-    plt.gca().spines['left'].set_visible(False)
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['bottom'].set_visible(False)
-    ax.plot(x, y, 'o', linestyle='-', c='m')
-    ax.plot([mean], [1], 's', markersize=10, c='m')
-    if x_min < min:
-        ax.text(min, 0, f'{min:.0f}', ha='center')
-    if max < x_max:
-        ax.text(max, 0, f'{max:.0f}', ha='center')
-    if x_min < mean < x_max:
-        ax.text(mean, 0, f'{mean:.0f}', ha='center')
-    ax.set_xlim(x_min, x_max)
-    ax.set_yticks([])
-    ax.set_ylim(0, 2)
-    ax.grid(True)
-    ax.set_title('異常度', fontname="MS Gothic", loc='left')
-    st.pyplot(fig)
-
-
 def main():
 
     hide_menu_style = """
@@ -165,6 +143,14 @@ def main():
             # "set color max ", -1000, 1000, 200)
             "最大値 ", 1, 1000, 200)
         color_range = app_color_min, app_color_max
+
+    app_threshold = st.sidebar.number_input("しきい値", 0, 1000, 30)
+    app_threshold_rate = st.sidebar.number_input("割合エラー", 0., 100., 35.)
+    st.sidebar.caption("スコアがしきい値以上である割合が、割合エラーの値以上の場合エラー")
+    app_threshold_min = st.sidebar.number_input("スコア最小値", 1, 1000, 20)
+    st.sidebar.caption("スコアの最小値がスコア最小値以上の場合エラー")
+    app_threshold_max = st.sidebar.number_input("スコア最大値", 1, 1000, 40)
+    st.sidebar.caption("スコアの最大値がスコア最大値以上の場合エラー")
 
     # app_start = st.sidebar.button("Start")
     app_start = st.sidebar.button("検査開始")
@@ -243,7 +229,7 @@ def main():
             test_dataset = st.session_state.test_dataset
 
         # st.header("Random (healthy) training samples")
-        st.header("正常画像（ランダム抽出）")
+        st.header("正常画像")
         cols = st.columns(N_IMAGE_GALLERY)
         if not st.session_state.reached_test_phase:
             col_imgs = get_sample_images(train_dataset, N_IMAGE_GALLERY)
@@ -302,12 +288,12 @@ def main():
         last_page = len(test_dataset) - 1
         prev, current, next = st.columns([1, 1, 1])
 
-        if next.button("Next"):
+        if next.button("\>"):
 
             if st.session_state.test_idx < last_page:
                 st.session_state.test_idx += 1
 
-        if prev.button("Previous"):
+        if prev.button("<"):
 
             if 0 < st.session_state.test_idx:
                 st.session_state.test_idx -= 1
@@ -318,7 +304,12 @@ def main():
         img_lvl_anom_score, pxl_lvl_anom_score = model.predict(
             sample.unsqueeze(0))
         score_range = pxl_lvl_anom_score.min(), pxl_lvl_anom_score.max()
-        score_median = np.median(pxl_lvl_anom_score)
+        # score_mean = pxl_lvl_anom_score.mean()
+
+        pxl_lvl_anom_score_org = pxl_lvl_anom_score.clone()
+        scores = pxl_lvl_anom_score_org.to(
+            torch.float32).detach().numpy().reshape(-1)
+        score_mode = stats.mode(scores, axis=None).mode[0]
 
         # if not manualRange:
         if relativeRange:
@@ -327,8 +318,37 @@ def main():
         # st.write("pixel score min:{:.0f}".format(score_range[0]))
         # st.write("pixel score max:{:.0f}".format(score_range[1]))
 
-        show_range(score_range[0], score_range[1],
-                   score_median, 0, 200 if relativeRange else app_color_max)
+        score_rate = np.count_nonzero(
+            app_threshold <= scores) / np.size(scores) * 100
+        score_string = f'異常度：{score_rate:.2f}％'
+
+        if score_rate < app_threshold_rate and score_range[0] < app_threshold_min and score_range[1] < app_threshold_max:
+            st.markdown(score_string)
+        else:
+            st.markdown(f":red[{score_string}]")
+
+        range_max = 200 if relativeRange else app_color_max
+
+        fig = plt.figure(figsize=(10, 2))
+        n, bins, patches = plt.hist(scores, 100, (0, range_max))
+        for patch in patches:
+            if app_threshold <= patch.get_x():
+                patch.set_facecolor(mcolors.BASE_COLORS["r"])
+        # for bin_range in range(len(bins) - 1):
+        #     if score_mean < bins[bin_range + 1]:
+        #         plt.annotate(f'{score_mean:.0f}',
+        #                      (score_mean - 2, n[bin_range]))
+        #         break
+        for bin_range in range(len(bins) - 1):
+            if score_mode < bins[bin_range + 1]:
+                plt.annotate(f'{score_mode:.0f}',
+                             (score_mode - 2, n[bin_range]))
+                break
+        plt.annotate(f'{score_range[0]:.0f}', (score_range[0] - 2, 100))
+        plt.annotate(f'{score_range[1]:.0f}', (score_range[1] - 2, 100))
+        ax = plt.gca()
+        ax.set_ylim([0, 20000])
+        st.pyplot(fig)
 
 
 @ contextmanager
