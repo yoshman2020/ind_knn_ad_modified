@@ -10,8 +10,11 @@ https://github.com/h1day/ind_knn_ad/blob/master/LICENSE
 * change Test sample index to button
 * hide Menu
 * add threshold
+* add fastapi
 
 # Industrial KNN-based Anomaly Detection
+
+fastapi Run `$ uvicorn main:app --reload`
 
 ⭐Now has streamlit support!⭐ Run `$ streamlit run streamlit_app.py`
 
