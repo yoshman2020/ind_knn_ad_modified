@@ -1,32 +1,12 @@
-body {
-    display: grid;
-    grid-template-areas:
-        "nav header"
-        "nav article"
-        "nav footer";
-    grid-row-gap: 1rem;
-    grid-column-gap: 1rem;
-    height: 100vh;
-    margin: 0;
-    overflow-x: hidden;
-}
-
-/* 設定表示 */
-.show_nav {
-    grid-template-rows: 4rem 1fr 4rem;
-    grid-template-columns: 22rem 1fr;
-}
-
-/* 設定非表示 */
-.hide_nav {
-    grid-template-rows: 4rem 1fr 4rem;
-    grid-template-columns: 0 1fr;
+/* 設定 */
+#main_nav {
+    min-width: 20rem;
 }
 
 /* 設定開くボタン */
 #btn_open {
     float: left;
-    padding-right: 1rem;
+    margin: 1rem;
     font-size: 1.5rem;
 }
 
@@ -37,62 +17,20 @@ body {
     font-size: 2.5rem;
 }
 
-/* Stack the layout on small devices/viewports. */
-@media all and (max-width: 575px) {
-    body {
-        grid-template-areas:
-            "header"
-            "nav"
-            "article"
-            "footer";
+@media(max-width:576px) {
+    #main {
+        flex-direction: column;
     }
 
-    /* 設定表示 */
-    .show_nav {
-        grid-template-rows: 4rem 17rem 1fr 4rem;
-        grid-template-columns: 1fr;
-    }
-
-    /* 設定非表示 */
-    .hide_nav {
-        grid-template-rows: 4rem 0 1fr 4rem;
-        grid-template-columns: 1fr;
+    #main_nav {
+        height: 17rem;
+        overflow: auto;
     }
 
     /* 設定開くボタン */
     #btn_open {
-        float: right;
-        margin-right: 0;
-        padding-right: 0;
+        text-align: right;
     }
-}
-
-header,
-nav>div,
-article,
-footer {
-    padding: 1.2rem;
-}
-
-/* ヘッダー */
-#page_header {
-    grid-area: header;
-}
-
-/* フッター */
-#page_footer {
-    grid-area: footer;
-}
-
-/* 結果 */
-#main_article {
-    grid-area: article;
-}
-
-/* 設定 */
-#main_nav {
-    grid-area: nav;
-    overflow: auto;
 }
 
 /* 設定入力 */
@@ -131,47 +69,22 @@ footer {
     float: none;
 }
 
-/* 結果 */
-#result {
-    max-width: 100%;
-}
-
-/* 結果画像 */
-#result img {
-    max-width: 100%;
+/* メインパネル */
+article {
+    min-width: 0;
 }
 
 /* 正常画像 */
-#div_train {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow: auto;
-}
 
 #div_train img {
-    padding-left: 1rem;
+    padding-right: 1rem;
 }
 
-/* ページング */
-#div_paging {
-    display: grid;
-    grid-template-columns: 3rem 1fr 3rem;
-    justify-items: center;
-    padding: 1rem;
+/* 画像拡大 */
+.i-modal {
+    color: transparent;
 }
 
-/* 検査画像,Anomary map,結果 */
-#div_sample,
-#div_fmap,
-#div_overlay,
-#div_score,
-#div_hist {
-    float: left;
-    padding-left: 1rem;
-}
-
-/* ヒストグラム */
-#div_hist img {
-    float: left;
-    max-width: 100%;
+.i-modal:hover {
+    color: inherit;
 }

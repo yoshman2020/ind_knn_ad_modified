@@ -2,8 +2,7 @@
  * 設定非表示
  */
 function hideNav() {
-    $('body').removeClass('show_nav')
-    $('body').addClass('hide_nav')
+    $('#main_nav').addClass('d-none')
     $('#btn_open').show()
 }
 
@@ -11,8 +10,7 @@ function hideNav() {
  * 設定表示
  */
 function showNav() {
-    $('body').removeClass('hide_nav')
-    $('body').addClass('show_nav')
+    $('#main_nav').removeClass('d-none')
     $('#btn_open').hide()
 }
 
@@ -22,8 +20,8 @@ function showNav() {
  * @param {string} divId 範囲表示ID
  */
 function showRangeValue(rngId, divId) {
-    let rng = document.querySelector('#' + rngId)
-    let div = document.querySelector('#' + divId)
+    const rng = document.querySelector('#' + rngId)
+    const div = document.querySelector('#' + divId)
     div.textContent = rng.value
     rng.addEventListener('input', (event) => {
         div.textContent = event.target.value
@@ -34,22 +32,19 @@ function showRangeValue(rngId, divId) {
  * 画像をdivに表示する
  * @param {[name: string]: string} testResult 結果データ
  * @param {string} img 結果データの画像ID
- * @param {string} divId 表示するdivのid
+ * @param {string} imgId 表示するimgのid
  * @param {string} imgTitle 表示する画像のタイトル
  */
-function setImage(testResult, img, divId, imgTitle) {
-    let b64encode = testResult[img]
-    $('#' + divId).html(
-        `<h3>${imgTitle}</h3>
-        <img src='data:image/jpeg;base64,${b64encode}' />`
-    )
+function setImage(testResult, img, imgId) {
+    const b64encode = testResult[img]
+    $(`#${imgId}`).prop('src', `data:image/jpeg;base64,${b64encode}`)
 }
 
 /**
  * ページボタン押下可不可設定
  */
 function setPrevnextEnabled() {
-    let currentIndex = Number($('#hdn_current').val())
+    const currentIndex = Number($('#hdn_current').val())
     if (0 < currentIndex) {
         $('#btn_prev').prop('disabled', false)
         $('#btn_prev').addClass('btn-outline-primary')
@@ -59,7 +54,7 @@ function setPrevnextEnabled() {
         $('#btn_prev').removeClass('btn-outline-primary')
         $('#btn_prev').addClass('btn-light')
     }
-    let testSize = Number($('#hdn_test_size').val())
+    const testSize = Number($('#hdn_test_size').val())
     if (currentIndex < testSize - 1) {
         $('#btn_next').prop('disabled', false)
         $('#btn_next').addClass('btn-outline-primary')
@@ -78,25 +73,21 @@ function setPrevnextEnabled() {
 function showResult(testResult) {
     $('#result').show()
 
-    setImage(testResult, 'sample_b64encode', 'div_sample', '検査画像')
-    setImage(testResult, 'fmap_b64encode', 'div_fmap', 'Anomary map')
-    setImage(testResult, 'overlay_img_b64encode', 'div_overlay', '結果')
-    setImage(testResult, 'img_hist_b64encode', 'div_hist', '')
-    let imgHeight = $('#div_sample img').height()
-    if (0 < imgHeight) {
-        $('#div_overlay img').height(imgHeight)
-    }
+    setImage(testResult, 'sample_b64encode', 'img_sample')
+    setImage(testResult, 'fmap_b64encode', 'img_fmap')
+    setImage(testResult, 'overlay_img_b64encode', 'img_overlay')
+    setImage(testResult, 'img_hist_b64encode', 'img_hist')
 
     // 異常度
-    let scoreString = testResult['score_string']
-    let isError = testResult['is_error']
+    const scoreString = testResult['score_string']
+    const isError = testResult['is_error']
     $('#div_score').html(scoreString)
-    let scoreClass = isError ? 'text-danger' : 'text-success'
+    const scoreClass = isError ? 'text-danger' : 'text-success'
     $('#div_score').removeClass('text-danger text-success')
     $('#div_score').addClass(scoreClass)
 
     // テスト数
-    let testSize = testResult['test_size']
+    const testSize = testResult['test_size']
     $('#hdn_test_size').val(testSize)
 
     // ページ
@@ -120,6 +111,8 @@ function formSubmit(event) {
             alert('正常画像３枚以上と検査画像１枚以上を選択してください。')
             return
         }
+        $('#index_message').hide()
+        $('#result_message').show()
         $('#result_message').html('Checking or downloading dataset ...')
         $('#result').hide()
         $('#div_train').empty()
@@ -132,14 +125,18 @@ function formSubmit(event) {
             data: formData
         }).done(function (data) {
             // success
-            $('#index_message').hide()
-            $('#result_message').html('')
+            $('#result_message').hide()
             // 正常画像
-            let trainB64encodeImages = data['train_b64encode_images']
+            const trainB64encodeImages = data['train_b64encode_images']
             // テスト結果
-            let testResult = data['test_result']
-            trainB64encodeImages.forEach(file => {
-                $('#div_train').append(`<img src='data:image/jpeg;base64,${file}' />`)
+            const testResult = data['test_result']
+            trainB64encodeImages.forEach((file, index) => {
+                $('#div_train').append(
+                    `<div class='position-relative'>
+                        <i class='bi bi-arrows-angle-expand fs-4 position-absolute top-0 end-0 pe-3 i-modal' data-bs-toggle='modal' data-bs-target='#imageModal' data-bs-title='正常画像[${index + 1}]' data-bs-imgid='img_train${index}'></i>
+                        <img id='img_train${index}' src='data:image/jpeg;base64,${file}' />
+                    </div>`
+                )
             });
             $('#hdn_current').val(0)
             showResult(testResult)
@@ -169,7 +166,7 @@ function changeCondition() {
         }).done(function (data) {
             // success
             // テスト結果
-            let testResult = data['test_result']
+            const testResult = data['test_result']
             showResult(testResult)
         }).fail(function (jqXHR, textStatus, errorThrown) {
             // error
@@ -186,10 +183,10 @@ function changeCondition() {
 function changeConditionIndex(isUp) {
     try {
         // ページ遷移
-        let currentIndex = Number($('#hdn_current').val())
-        let testIndex = isUp ? currentIndex + 1 : currentIndex - 1
-        let testSize = Number($('#hdn_test_size').val())
-        let testIndexClip = Math.max(0, Math.min(testIndex, testSize - 1))
+        const currentIndex = Number($('#hdn_current').val())
+        const testIndex = isUp ? currentIndex + 1 : currentIndex - 1
+        const testSize = Number($('#hdn_test_size').val())
+        const testIndexClip = Math.max(0, Math.min(testIndex, testSize - 1))
         $('#hdn_current').val(testIndexClip)
 
         const formData = new FormData($('#form')[0])
@@ -202,7 +199,7 @@ function changeConditionIndex(isUp) {
         }).done(function (data) {
             // success
             // テスト結果
-            let testResult = data['test_result']
+            const testResult = data['test_result']
             showResult(testResult)
         }).fail(function (jqXHR, textStatus, errorThrown) {
             // error
@@ -210,6 +207,26 @@ function changeConditionIndex(isUp) {
         });
     } catch (error) {
         console.error(error)
+    }
+}
+
+/**
+ * 画像拡大表示
+ */
+function setModal() {
+    const imageModal = document.getElementById('imageModal')
+    if (imageModal) {
+        imageModal.addEventListener('show.bs.modal', event => {
+            const button = event.relatedTarget
+            const title = button.getAttribute('data-bs-title')
+            const imgid = button.getAttribute('data-bs-imgid')
+
+            const modalTitle = imageModal.querySelector('.modal-title')
+            const modalBodyImg = imageModal.querySelector('.modal-body img')
+
+            modalTitle.textContent = title
+            modalBodyImg.src = document.getElementById(imgid).src
+        })
     }
 }
 
@@ -280,5 +297,9 @@ $(function () {
 
     // 結果
     $('#index_message').show()
+    $('#result_message').hide()
     $('#result').hide()
+
+    // 画像拡大表示
+    setModal()
 })
