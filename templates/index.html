@@ -31,7 +31,7 @@
                         <label for="file_test" class="form-label">検査画像を1枚以上選択してください。</label>
                         <input name="file_test" id="file_test" type="file" multiple accept="image/*"
                             class="form-control" />
-                        <input name="btn-start" id="btn-start" type="submit" class="btn btn-primary" value="検査開始" />
+                        <input name="btn_start" id="btn_start" type="submit" class="btn btn-primary" value="検査開始" />
                         <br />
                         <input name="chk_sample" id="chk_sample" type="checkbox" class="form-check-input" />
                         <label for="chk_sample" class="form-label">サンプルデータ使用</label>
@@ -50,6 +50,13 @@
                             <option value="efficientnet_b0">efficientnet_b0</option>
                             <option value="tf_mobilenetv3_small_100">tf_mobilenetv3_small_100</option>
                         </select>
+                        <input name="chk_model" id="chk_model" type="checkbox" class="form-check-input" />
+                        <label for="chk_model" class="form-label">モデル読込み</label>
+                        <input name="file_model" id="file_model" type="file" accept=".tar" disabled="true"
+                            class="form-control" />
+                        <input name="btn_save" id="btn_save" type="button" class="btn btn-outline-primary"
+                            value="モデル保存" />
+                        <br />
                         <label class="form-label">色範囲</label>
                         <div id="div_color" class="range-label-l"></div>
                         <div id="sld_color"></div>
@@ -85,13 +92,13 @@
             </div>
         </nav>
         <article class="flex-grow-1 p-2">
-            <div id="index_message">
+            <div id="index_message" class="p-2">
                 <em>SPADE</em>、<em>PaDiM</em>、<em>PatchCore</em>の３つの方法で異常検知を試せます。<br />
                 左のサイドパネルで画像を選択し実行してください。<br />
                 学習後結果が表示されます。<br />
                 MVTecデータセットをダウンロードしてテストすることもできます。
             </div>
-            <div id="result_message" class="bg-success-subtle border border-success-subtle rounded-2"></div>
+            <div id="result_message" class="p-2 bg-success-subtle border border-success-subtle rounded-2"></div>
             <div id="result" class="container text-center">
                 <div class="row">
                     <h2 class="col">正常画像</h2>
@@ -137,7 +144,7 @@
                     <div id="div_score" class="col pt-1 fs-5"></div>
                 </div>
                 <div class="row">
-                    <div class="col">
+                    <div class="col position-relative">
                         <i class="bi bi-arrows-angle-expand fs-4 position-absolute top-0 end-0 pe-3 i-modal"
                             data-bs-toggle="modal" data-bs-target="#imageModal" data-bs-title="スコア"
                             data-bs-imgid="img_hist"></i>

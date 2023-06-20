@@ -8,17 +8,20 @@ import timm
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
+import io
+import typing
 
 # from utils import GaussianBlur, get_coreset_idx_randomp, get_tqdm_params
 from indad.utils import GaussianBlur, get_coreset_idx_randomp, get_tqdm_params
+from indad.data import StreamingDataset
 
 
 class KNNExtractor(torch.nn.Module):
     def __init__(
-            self,
-            backbone_name: str = "resnet50",
-            out_indices: Tuple = None,
-            pool_last: bool = False,
+        self,
+        backbone_name: str = "resnet50",
+        out_indices: Tuple = None,
+        pool_last: bool = False,
     ):
         super().__init__()
 
@@ -87,12 +90,56 @@ class KNNExtractor(torch.nn.Module):
             **extra_params,
         }
 
+    def get_buffer(self) -> io.BytesIO:
+        """モデルのバッファーを取得する
+
+        Returns:
+            BytesIO: モデルのバッファー
+        """
+        if isinstance(self, SPADE):
+            z_lib = self.z_lib
+            patch_lib = None
+            resize = None
+        else:
+            z_lib = None
+            patch_lib = self.patch_lib
+            resize = self.resize
+
+        buffer = io.BytesIO()
+        torch.save(
+            {
+                "model_state_dict": self.state_dict(),
+                "z_lib": z_lib,
+                "patch_lib": patch_lib,
+                "resize": resize,
+            },
+            buffer,
+        )
+
+        return buffer
+
+    def load_buffer(
+        self, file: typing.BinaryIO, test_dataset: StreamingDataset
+    ):
+        """ファイルからモデルを読込む
+
+        Args:
+            file (BinaryIO): モデルのファイル
+            test_dataset (StreamingDataSet): 検査データセット
+        """
+        checkpoint = torch.load(file)
+        self.load_state_dict(checkpoint["model_state_dict"])
+        self.z_lib = checkpoint["z_lib"]
+        self.patch_lib = checkpoint["patch_lib"]
+        self.resize = checkpoint["resize"]
+        self.eval()
+
 
 class SPADE(KNNExtractor):
     def __init__(
-            self,
-            k: int = 5,
-            backbone_name: str = "resnet18",
+        self,
+        k: int = 5,
+        backbone_name: str = "resnet18",
     ):
         super().__init__(
             backbone_name=backbone_name,
@@ -132,22 +179,29 @@ class SPADE(KNNExtractor):
 
         distances = torch.linalg.norm(self.z_lib - z, dim=1)
         values, indices = torch.topk(
-            distances.squeeze(), self.k, largest=False)
+            distances.squeeze(), self.k, largest=False
+        )
 
         z_score = values.mean()
 
         # Build the feature gallery out of the k nearest neighbours.
-        # The authors migh have concatenated all features maps first, then check the minimum norm per pixel.
-        # Here, we check for the minimum norm first, then concatenate (sum) in the final layer.
+        # The authors migh have concatenated all features maps first, then check the minimum norm per pixel. # noqa: E501
+        # Here, we check for the minimum norm first, then concatenate (sum) in the final layer. # noqa: E501
         scaled_s_map = torch.zeros(1, 1, self.image_size, self.image_size)
         for idx, fmap in enumerate(feature_maps):
             nearest_fmaps = torch.index_select(
-                self.feature_maps[idx], 0, indices)
+                self.feature_maps[idx], 0, indices
+            )
             # min() because kappa=1 in the paper
-            s_map, _ = torch.min(torch.linalg.norm(
-                nearest_fmaps - fmap, dim=1), 0, keepdims=True)
+            s_map, _ = torch.min(
+                torch.linalg.norm(nearest_fmaps - fmap, dim=1),
+                0,
+                keepdims=True,
+            )
             scaled_s_map += torch.nn.functional.interpolate(
-                s_map.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear'
+                s_map.unsqueeze(0),
+                size=(self.image_size, self.image_size),
+                mode="bilinear",
             )
 
         scaled_s_map = self.blur(scaled_s_map)
@@ -155,16 +209,18 @@ class SPADE(KNNExtractor):
         return z_score, scaled_s_map
 
     def get_parameters(self):
-        return super().get_parameters({
-            "k": self.k,
-        })
+        return super().get_parameters(
+            {
+                "k": self.k,
+            }
+        )
 
 
 class PaDiM(KNNExtractor):
     def __init__(
-            self,
-            d_reduced: int = 100,
-            backbone_name: str = "resnet18",
+        self,
+        d_reduced: int = 100,
+        backbone_name: str = "resnet18",
     ):
         super().__init__(
             backbone_name=backbone_name,
@@ -189,13 +245,16 @@ class PaDiM(KNNExtractor):
         # random projection
         if self.patch_lib.shape[1] > self.d_reduced:
             print(
-                f"   PaDiM: (randomly) reducing {self.patch_lib.shape[1]} dimensions to {self.d_reduced}.")
+                f"   PaDiM: (randomly) reducing {self.patch_lib.shape[1]} dimensions to {self.d_reduced}."  # noqa: E501
+            )
             self.r_indices = torch.randperm(self.patch_lib.shape[1])[
-                :self.d_reduced]
+                : self.d_reduced
+            ]
             self.patch_lib_reduced = self.patch_lib[:, self.r_indices, ...]
         else:
             print(
-                "   PaDiM: d_reduced is higher than the actual number of dimensions, copying self.patch_lib ...")
+                "   PaDiM: d_reduced is higher than the actual number of dimensions, copying self.patch_lib ..."  # noqa: E501
+            )
             self.patch_lib_reduced = self.patch_lib
 
         # calcs
@@ -204,15 +263,21 @@ class PaDiM(KNNExtractor):
         x_ = self.patch_lib_reduced - self.means_reduced
 
         # cov calc
-        self.E = torch.einsum(
-            'abkl,bckl->ackl',
-            x_.permute([1, 0, 2, 3]),  # transpose first two dims
-            x_,
-        ) * 1 / (self.patch_lib.shape[0] - 1)
-        self.E += self.epsilon * \
-            torch.eye(self.d_reduced).unsqueeze(-1).unsqueeze(-1)
-        self.E_inv = torch.linalg.inv(
-            self.E.permute([2, 3, 0, 1])).permute([2, 3, 0, 1])
+        self.E = (
+            torch.einsum(
+                "abkl,bckl->ackl",
+                x_.permute([1, 0, 2, 3]),  # transpose first two dims
+                x_,
+            )
+            * 1
+            / (self.patch_lib.shape[0] - 1)
+        )
+        self.E += self.epsilon * torch.eye(self.d_reduced).unsqueeze(
+            -1
+        ).unsqueeze(-1)
+        self.E_inv = torch.linalg.inv(self.E.permute([2, 3, 0, 1])).permute(
+            [2, 3, 0, 1]
+        )
 
     def predict(self, sample):
         feature_maps = self(sample)
@@ -222,27 +287,31 @@ class PaDiM(KNNExtractor):
         # reduce
         x_ = fmap[:, self.r_indices, ...] - self.means_reduced
 
-        left = torch.einsum('abkl,bckl->ackl', x_, self.E_inv)
-        s_map = torch.sqrt(torch.einsum('abkl,abkl->akl', left, x_))
+        left = torch.einsum("abkl,bckl->ackl", x_, self.E_inv)
+        s_map = torch.sqrt(torch.einsum("abkl,abkl->akl", left, x_))
         scaled_s_map = torch.nn.functional.interpolate(
-            s_map.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear'
+            s_map.unsqueeze(0),
+            size=(self.image_size, self.image_size),
+            mode="bilinear",
         )
 
         return torch.max(s_map), scaled_s_map[0, ...]
 
     def get_parameters(self):
-        return super().get_parameters({
-            "d_reduced": self.d_reduced,
-            "epsilon": self.epsilon,
-        })
+        return super().get_parameters(
+            {
+                "d_reduced": self.d_reduced,
+                "epsilon": self.epsilon,
+            }
+        )
 
 
 class PatchCore(KNNExtractor):
     def __init__(
-            self,
-            f_coreset: float = 0.01,  # fraction the number of training samples
-            backbone_name: str = "resnet18",
-            coreset_eps: float = 0.90,  # sparse projection parameter
+        self,
+        f_coreset: float = 0.01,  # fraction the number of training samples
+        backbone_name: str = "resnet18",
+        coreset_eps: float = 0.90,  # sparse projection parameter
     ):
         super().__init__(
             backbone_name=backbone_name,
@@ -265,8 +334,9 @@ class PatchCore(KNNExtractor):
             if self.resize is None:
                 largest_fmap_size = feature_maps[0].shape[-2:]
                 self.resize = torch.nn.AdaptiveAvgPool2d(largest_fmap_size)
-            resized_maps = [self.resize(self.average(fmap))
-                            for fmap in feature_maps]
+            resized_maps = [
+                self.resize(self.average(fmap)) for fmap in feature_maps
+            ]
             patch = torch.cat(resized_maps, 1)
             patch = patch.reshape(patch.shape[1], -1).T
 
@@ -284,8 +354,9 @@ class PatchCore(KNNExtractor):
 
     def predict(self, sample):
         feature_maps = self(sample)
-        resized_maps = [self.resize(self.average(fmap))
-                        for fmap in feature_maps]
+        resized_maps = [
+            self.resize(self.average(fmap)) for fmap in feature_maps
+        ]
         patch = torch.cat(resized_maps, 1)
         patch = patch.reshape(patch.shape[1], -1).T
 
@@ -296,33 +367,39 @@ class PatchCore(KNNExtractor):
 
         # reweighting
         m_test = patch[s_idx].unsqueeze(0)  # anomalous patch
-        m_star = self.patch_lib[min_idx[s_idx]
-                                ].unsqueeze(0)  # closest neighbour
+        m_star = self.patch_lib[min_idx[s_idx]].unsqueeze(
+            0
+        )  # closest neighbour
         w_dist = torch.cdist(m_star, self.patch_lib)  # find knn to m_star pt.1
-        _, nn_idx = torch.topk(w_dist, k=self.n_reweight,
-                               largest=False)  # pt.2
+        _, nn_idx = torch.topk(
+            w_dist, k=self.n_reweight, largest=False
+        )  # pt.2
         # equation 7 from the paper
         m_star_knn = torch.linalg.norm(
-            m_test - self.patch_lib[nn_idx[0, 1:]], dim=1)
+            m_test - self.patch_lib[nn_idx[0, 1:]], dim=1
+        )
         # Softmax normalization trick as in transformers.
         # As the patch vectors grow larger, their norm might differ a lot.
         # exp(norm) can give infinities.
         D = torch.sqrt(torch.tensor(patch.shape[1]))
-        w = 1 - (torch.exp(s_star / D) /
-                 (torch.sum(torch.exp(m_star_knn / D))))
+        w = 1 - (
+            torch.exp(s_star / D) / (torch.sum(torch.exp(m_star_knn / D)))
+        )
         s = w * s_star
 
         # segmentation map
         s_map = min_val.view(1, 1, *feature_maps[0].shape[-2:])
         s_map = torch.nn.functional.interpolate(
-            s_map, size=(self.image_size, self.image_size), mode='bilinear'
+            s_map, size=(self.image_size, self.image_size), mode="bilinear"
         )
         s_map = self.blur(s_map)
 
         return s, s_map
 
     def get_parameters(self):
-        return super().get_parameters({
-            "f_coreset": self.f_coreset,
-            "n_reweight": self.n_reweight,
-        })
+        return super().get_parameters(
+            {
+                "f_coreset": self.f_coreset,
+                "n_reweight": self.n_reweight,
+            }
+        )

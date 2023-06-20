@@ -13,15 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import uuid
 
-from fastapi import (
-    FastAPI,
-    Request,
-    Form,
-    UploadFile,
-    Depends,
-)
+from fastapi import FastAPI, Request, Form, UploadFile, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import StreamingResponse
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 import inspect
@@ -78,6 +73,10 @@ class PredictForm(BaseModel):
     sel_method: str | None = None
     # backbone
     sel_backbone: str | None = None
+    # モデル読込み
+    chk_model: bool | None = None
+    # モデルファイル
+    file_model: UploadFile | None = None
     # 色範囲最小値
     hdn_color_min: int | None = None
     # 色範囲最大値
@@ -239,6 +238,10 @@ def setget_session_data(
     else:
         assert train_dataset is not None and test_dataset is not None
         model = load_model(form.sel_method, form.sel_backbone)
+        if form.chk_model:
+            # モデル読込み
+            model.load_buffer(form.file_model.file, test_dataset)
+        else:
         model.fit(DataLoader(train_dataset))
         session_data.session_id = session_id
         session_data.model = model
@@ -266,8 +269,9 @@ def get_result(
     score_range = pxl_lvl_anom_score.min(), pxl_lvl_anom_score.max()
 
     pxl_lvl_anom_score_org = pxl_lvl_anom_score.clone()
-    scores = pxl_lvl_anom_score_org.to(
-        torch.float32).detach().numpy().reshape(-1)
+    scores = (
+        pxl_lvl_anom_score_org.to(torch.float32).detach().numpy().reshape(-1)
+    )
     score_mode = stats.mode(scores, axis=None, keepdims=False).mode
 
     if form.chk_relative:
@@ -287,15 +291,21 @@ def get_result(
     plt.axis("off")
     buf = io.BytesIO()
     plt.savefig(
-        buf, format="png", bbox_inches="tight", pad_inches=0, transparent=True, dpi=60
+        buf,
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0,
+        transparent=True,
+        dpi=60,
     )
     buf.seek(0)
     overlay_img = Image.open(buf)
     overlay_img_rgb = overlay_img.convert("RGB")
     overlay_img_b64encode = pil_to_b64encode(overlay_img_rgb)
 
-    score_rate = np.count_nonzero(
-        form.rng_threshold <= scores) / np.size(scores) * 100
+    score_rate = (
+        np.count_nonzero(form.rng_threshold <= scores) / np.size(scores) * 100
+    )
     score_string = f"異常度：{score_rate:.2f}％"
 
     # エラー
@@ -387,36 +397,58 @@ async def predict(
 
     Args:
         request (Request): リクエスト
-        form (PredictForm, optional): 検査フォーム. Defaults to Depends(PredictForm.as_form).
+        form (PredictForm, optional): 検査フォーム.
+            Defaults to Depends(PredictForm.as_form).
 
     Returns:
         Dict[str, Any]: 検査結果
     """
+    try:
     if not form.chk_sample:
+            # サンプルデータ使用なし、モデル読込みなし
         # test dataset will contain 1 test image
         train_dataset = StreamingDataset()
         test_dataset = StreamingDataset()
+
         # train images
+            if form.chk_model:
+                # モデル読込みチェックあり
+                train_b64encode_images = []
+            else:
         for training_image in form.file_train:
             if training_image.size == 0:
-                return {"message": "正常画像を3枚以上選択してください。"}
-            train_dataset.add_pil_image(Image.open(training_image.file))
+                        return {
+                            "message": "正常画像を3枚以上選択してください。",
+                            "error": "file_train length < 3",
+                        }
+                    train_dataset.add_pil_image(
+                        Image.open(training_image.file)
+                    )
         train_b64encode_images = train_dataset.get_b64encode_images()
+
         # test image
         for test_image in form.file_test:
             if test_image.size == 0:
-                return {"message": "検査画像を1枚以上選択してください。"}
+                    return {
+                        "message": "検査画像を1枚以上選択してください。",
+                        "error": "file_test length < 1",
+                    }
             test_dataset.add_pil_image(Image.open(test_image.file))
     else:
         train_dataset, test_dataset = MVTecDataset(
-            form.sel_mvtec).get_datasets()
+                form.sel_mvtec
+            ).get_datasets()
 
     session_data = setget_session_data(
         request, form, train_dataset, test_dataset, False
     )
 
     test_result = testing(form, session_data, 0)
-
+    except Exception as err:
+        return {
+            "message": "エラーが発生しました。",
+            "error": f"Unexpected {err=}, {type(err)=}",
+        }
     return {
         "train_b64encode_images": train_b64encode_images,
         "test_result": test_result,
@@ -432,11 +464,13 @@ async def change_condition(
 
     Args:
         request (Request): リクエスト
-        form (PredictForm, optional): 検査フォーム. Defaults to Depends(PredictForm.as_form).
+        form (PredictForm, optional): 検査フォーム.
+            Defaults to Depends(PredictForm.as_form).
 
     Returns:
         Dict[str, Any]: 検査結果
     """
+    try:
     if (
         "session_id" not in request.session
         or session_data.session_id != request.session["session_id"]
@@ -444,7 +478,14 @@ async def change_condition(
         return await predict(request, form)
     session_data_l = setget_session_data(request, form, None, None, False)
 
-    test_result = get_result(form, session_data_l, session_data.current_index)
+        test_result = get_result(
+            form, session_data_l, session_data.current_index
+        )
+    except Exception as err:
+        return {
+            "message": "エラーが発生しました。",
+            "error": f"Unexpected {err=}, {type(err)=}",
+        }
     return {
         "test_result": test_result,
     }
@@ -461,11 +502,13 @@ async def change_condition_index(
     Args:
         test_index (int): 検査対象インデックス（0～）
         request (Request, optional): リクエスト. Defaults to None.
-        form (PredictForm, optional): 検査フォーム. Defaults to Depends(PredictForm.as_form).
+        form (PredictForm, optional): 検査フォーム.
+            Defaults to Depends(PredictForm.as_form).
 
     Returns:
         Dict[str, Any]: 検査結果
     """
+    try:
     if (
         "session_id" not in request.session
         or session_data.session_id != request.session["session_id"]
@@ -473,6 +516,48 @@ async def change_condition_index(
         return await predict(request, form)
     session_data_l = setget_session_data(request, form, None, None, False)
     test_result = testing(form, session_data_l, test_index)
+    except Exception as err:
+        return {
+            "message": "エラーが発生しました。",
+            "error": f"Unexpected {err=}, {type(err)=}",
+        }
     return {
         "test_result": test_result,
     }
+
+
+@app.get("/save/")
+async def save(
+    request: Request = None, form: PredictForm = Depends(PredictForm.as_form)
+):
+    """モデル保存
+
+    Args:
+        request (Request): リクエスト
+        form (PredictForm, optional): 検査フォーム.
+            Defaults to Depends(PredictForm.as_form).
+
+    Returns:
+        Dict[str, Any]: 検査結果
+    """
+    try:
+        if (
+            "session_id" not in request.session
+            or session_data.session_id != request.session["session_id"]
+        ):
+            _ = await predict(request, form)
+        session_data_l = setget_session_data(request, form, None, None, False)
+        model = session_data_l.model
+        buffer = model.get_buffer()
+        buffer.seek(0)
+    except Exception as err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected {err=}, {type(err)=}",
+        )
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": "attachment; filename='model.tar'"},
+    )
