@@ -286,6 +286,7 @@ def get_result(
     fmap_img = pred_to_img(pxl_lvl_anom_score.clone(), color_range)
     fmap_b64encode = img_to_b64encode(fmap_img)
 
+    plt.cla()
     plt.imshow(sample_img)
     plt.imshow(fmap_img, cmap="jet", alpha=0.5)
     plt.axis("off")
